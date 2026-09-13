@@ -75,7 +75,7 @@ router.post('/webhook', async (req, res) => {
         `UPDATE subscriptions
          SET status = $1, current_period_end = to_timestamp($2), updated_at = now()
          WHERE stripe_subscription_id = $3`,
-        [subscription.status, subscription.current_period_end, subscription.id]
+        [subscription.status, getPeriodEnd(subscription), subscription.id]
       );
       break;
     }
@@ -83,6 +83,13 @@ router.post('/webhook', async (req, res) => {
 
   res.json({ received: true });
 });
+
+// Stripe's "Basil" API version (March 2025) moved current_period_end off the
+// top-level Subscription object and onto each subscription item instead —
+// this reads it from wherever it actually lives, old or new shape.
+function getPeriodEnd(subscription) {
+  return subscription.current_period_end || subscription.items?.data?.[0]?.current_period_end || null;
+}
 
 async function upsertSubscription(userId, plan, stripeSubscription) {
   await pool.query(
@@ -95,7 +102,7 @@ async function upsertSubscription(userId, plan, stripeSubscription) {
       stripeSubscription.id,
       plan,
       stripeSubscription.status,
-      stripeSubscription.current_period_end,
+      getPeriodEnd(stripeSubscription),
     ]
   );
 }
