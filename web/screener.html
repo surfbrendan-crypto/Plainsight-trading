@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Screener — Plainsight Trading</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <a href="index.html" class="wordmark">Plainsight Trading</a>
+    <div>
+      <a href="dashboard.html">Dashboard</a>
+      <a href="#" onclick="clearToken(); window.location.href='index.html';">Log out</a>
+    </div>
+  </nav>
+
+  <section class="app-shell wrap">
+    <h2>Screener</h2>
+    <p>Filters read from prices refreshed each morning — not live data.</p>
+
+    <form id="filter-form" class="filters">
+      <select name="sector">
+        <option value="">Any sector</option>
+        <option>Technology</option>
+        <option>Healthcare</option>
+        <option>Financial Services</option>
+        <option>Energy</option>
+        <option>Consumer Cyclical</option>
+        <option>Industrials</option>
+      </select>
+      <input name="minMarketCap" type="number" placeholder="Min market cap ($)" />
+      <input name="maxPe" type="number" step="any" placeholder="Max P/E" />
+      <input name="minDividendYield" type="number" step="any" placeholder="Min dividend yield (%) — Pro" />
+      <button class="btn btn-primary" type="submit">Filter</button>
+    </form>
+
+    <table id="results-table">
+      <thead><tr><th>Ticker</th><th>Price</th><th>Market cap</th><th>P/E</th><th>Dividend yield</th><th>Sector</th></tr></thead>
+      <tbody id="results-body"></tbody>
+    </table>
+    <p class="error-text" id="screener-error"></p>
+  </section>
+
+  <script src="js/api.js"></script>
+  <script src="js/screener.js"></script>
+</body>
+</html>

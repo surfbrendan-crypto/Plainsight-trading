@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Plainsight Trading</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <nav class="nav">
+    <a href="index.html" class="wordmark">Plainsight Trading</a>
+    <div>
+      <a href="screener.html">Screener</a>
+      <a href="#" onclick="clearToken(); window.location.href='index.html';">Log out</a>
+    </div>
+  </nav>
+
+  <section class="app-shell wrap">
+    <div class="app-header">
+      <h2>Your portfolios</h2>
+      <button class="btn btn-primary" onclick="createPortfolio()">New portfolio</button>
+    </div>
+
+    <p id="prices-note" style="font-size: 13px; color: var(--ink-soft);"></p>
+    <div id="portfolio-list"></div>
+    <p class="error-text" id="dashboard-error"></p>
+  </section>
+
+  <script src="js/api.js"></script>
+  <script src="js/dashboard.js"></script>
+</body>
+</html>

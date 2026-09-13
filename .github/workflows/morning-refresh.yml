@@ -1,0 +1,28 @@
+name: Morning price refresh
+
+on:
+  schedule:
+    # 11:00 UTC ≈ 6:00am Eastern / 3:00am Pacific — before US markets open,
+    # picking up the prior day's official close from FMP's EOD free tier.
+    - cron: '0 11 * * 1-5' # weekdays only, markets are closed Sat/Sun
+  workflow_dispatch: {} # lets you trigger a refresh manually from the Actions tab
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - run: npm install
+
+      - run: npm run refresh-prices
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
