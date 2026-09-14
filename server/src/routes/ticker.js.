@@ -1,0 +1,30 @@
+const express = require('express');
+const { pool } = require('../db');
+const { requireAuth } = require('../middleware/auth');
+
+const router = express.Router();
+router.use(requireAuth);
+
+// Searches our own symbols table (loaded once from FMP) — never calls FMP
+// directly, so using search doesn't touch the daily API call budget.
+router.get('/search', async (req, res) => {
+  const q = (req.query.q || '').trim();
+  if (!q) {
+    return res.json({ results: [] });
+  }
+
+  const contains = `%${q}%`;
+  const prefix = `${q}%`;
+
+  const { rows } = await pool.query(
+    `SELECT ticker, name FROM symbols
+     WHERE ticker ILIKE $1 OR name ILIKE $1
+     ORDER BY (ticker ILIKE $2) DESC, LENGTH(ticker), ticker
+     LIMIT 15`,
+    [contains, prefix]
+  );
+
+  res.json({ results: rows });
+});
+
+module.exports = router;
