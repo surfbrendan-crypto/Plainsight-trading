@@ -74,41 +74,48 @@ async function run() {
   let callsUsed = 0;
 
   for (const ticker of tickers) {
-    const [quote, profile, ratios] = await Promise.all([
-      fetchQuote(ticker),
-      fetchProfile(ticker),
-      fetchRatios(ticker),
-    ]);
-    callsUsed += 3;
+    try {
+      const [quote, profile, ratios] = await Promise.all([
+        fetchQuote(ticker),
+        fetchProfile(ticker),
+        fetchRatios(ticker),
+      ]);
+      callsUsed += 3;
 
-    if (!quote || !quote.price) {
-      console.warn(`No quote data for ${ticker} — skipping`);
-      continue;
+      if (!quote || !quote.price) {
+        console.warn(`No quote data for ${ticker} — skipping`);
+        continue;
+      }
+
+      await pool.query(
+        `INSERT INTO ticker_prices (ticker, price, market_cap, pe_ratio, dividend_yield, sector, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now())
+         ON CONFLICT (ticker) DO UPDATE SET
+           price = $2, market_cap = $3, pe_ratio = $4, dividend_yield = $5, sector = $6, updated_at = now()`,
+        [
+          ticker,
+          quote.price,
+          quote.marketCap,
+          ratios?.priceToEarningsRatioTTM ?? null,
+          profile?.lastDividend && quote.price ? profile.lastDividend / quote.price : null,
+          profile?.sector || null,
+        ]
+      );
+
+      // Log today's price into our own running history table — FMP's actual
+      // historical-data endpoints all require a paid plan, so instead of
+      // buying history we build it ourselves, one row per ticker per day.
+      await pool.query(
+        `INSERT INTO price_history (ticker, date, price) VALUES ($1, CURRENT_DATE, $2)
+         ON CONFLICT (ticker, date) DO UPDATE SET price = $2`,
+        [ticker, quote.price]
+      );
+    } catch (err) {
+      // One bad/invalid ticker (a typo, a delisted symbol, etc.) should
+      // never take down the refresh for every other ticker — log it and
+      // move on to the next one.
+      console.warn(`Skipping ${ticker}: ${err.message}`);
     }
-
-    await pool.query(
-      `INSERT INTO ticker_prices (ticker, price, market_cap, pe_ratio, dividend_yield, sector, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, now())
-       ON CONFLICT (ticker) DO UPDATE SET
-         price = $2, market_cap = $3, pe_ratio = $4, dividend_yield = $5, sector = $6, updated_at = now()`,
-      [
-        ticker,
-        quote.price,
-        quote.marketCap,
-        ratios?.priceToEarningsRatioTTM ?? null,
-        profile?.lastDividend && quote.price ? profile.lastDividend / quote.price : null,
-        profile?.sector || null,
-      ]
-    );
-
-    // Log today's price into our own running history table — FMP's actual
-    // historical-data endpoints all require a paid plan, so instead of
-    // buying history we build it ourselves, one row per ticker per day.
-    await pool.query(
-      `INSERT INTO price_history (ticker, date, price) VALUES ($1, CURRENT_DATE, $2)
-       ON CONFLICT (ticker, date) DO UPDATE SET price = $2`,
-      [ticker, quote.price]
-    );
   }
 
   console.log(`Done. Used ${callsUsed} of 250 daily FMP calls.`);
