@@ -1,4 +1,5 @@
 const express = require('express');
+const { pool } = require('../db');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -32,27 +33,19 @@ router.get('/search', async (req, res) => {
 });
 
 // Returns recent daily closing prices for a ticker, used to draw the small
-// price chart on a holding. Uses FMP's free "light" historical endpoint.
+// price chart on a holding. Reads from our own price_history table (built
+// up by the morning refresh job) rather than FMP directly — FMP's actual
+// historical-price endpoints all require a paid plan.
 router.get('/:ticker/history', async (req, res) => {
   const ticker = req.params.ticker.toUpperCase();
 
-  try {
-    const url = `https://financialmodelingprep.com/stable/historical-price-eod/light?symbol=${ticker}&apikey=${process.env.FMP_API_KEY}`;
-    const fmpRes = await fetch(url);
-    if (!fmpRes.ok) {
-      return res.status(502).json({ error: 'Could not fetch price history' });
-    }
-    const data = await fmpRes.json();
-    // FMP returns newest-first; take the most recent ~30 trading days and
-    // put them back in chronological order for charting.
-    const points = (Array.isArray(data) ? data : [])
-      .slice(0, 30)
-      .reverse()
-      .map((d) => ({ date: d.date, price: d.price }));
-    res.json({ points });
-  } catch (err) {
-    res.status(502).json({ error: 'Could not fetch price history' });
-  }
+  const { rows } = await pool.query(
+    `SELECT date, price FROM price_history WHERE ticker = $1 ORDER BY date DESC LIMIT 90`,
+    [ticker]
+  );
+
+  const points = rows.reverse().map((r) => ({ date: r.date.toISOString().slice(0, 10), price: Number(r.price) }));
+  res.json({ points });
 });
 
 module.exports = router;
