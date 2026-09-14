@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "refresh-prices": "node src/scripts/refreshPrices.js"
+    "refresh-prices": "node src/scripts/refreshPrices.js",
+    "load-symbols": "node src/scripts/loadSymbols.js"
   },
   "dependencies": {
     "express": "^4.19.2",
