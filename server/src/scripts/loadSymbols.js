@@ -13,7 +13,7 @@ const BATCH_SIZE = 500;
 
 async function run() {
   console.log('Fetching full symbol list from FMP...');
-  const res = await fetch(`${FMP_BASE}/actively-trading-list?apikey=${process.env.FMP_API_KEY}`);
+     const res = await fetch(`${FMP_BASE}/stock-list?apikey=${process.env.FMP_API_KEY}`);
   if (!res.ok) {
     throw new Error(`FMP request failed: ${res.status} ${await res.text()}`);
   }
