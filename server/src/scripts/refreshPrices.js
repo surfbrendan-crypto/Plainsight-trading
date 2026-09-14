@@ -3,9 +3,9 @@
 // Strategy for staying on FMP's free tier (250 requests/day, end-of-day data):
 //   1. Pull every ticker currently in use (held in a portfolio, watchlisted,
 //      or already in the screener universe) — deduplicated.
-//   2. Call FMP's "stable" quote + profile endpoints once per ticker (FMP's
-//      batch endpoints require a paid plan, so this stays on the free tier
-//      at the cost of 2 calls per ticker instead of 2 calls per batch).
+//   2. Call FMP's "stable" quote, profile, and ratios-ttm endpoints once per
+//      ticker (FMP's batch endpoints require a paid plan, so this stays on
+//      the free tier at the cost of 3 calls per ticker instead of 3 per batch).
 //   3. Write results into ticker_prices — every dashboard/screener read all
 //      day long comes from this cached table, never a live API call.
 require('dotenv').config();
@@ -52,6 +52,17 @@ async function fetchProfile(ticker) {
   return firstResult(await res.json());
 }
 
+async function fetchRatios(ticker) {
+  // FMP moved P/E off the quote endpoint entirely — it now lives on the
+  // trailing-twelve-month ratios endpoint instead.
+  const url = `${FMP_BASE}/ratios-ttm?symbol=${ticker}&apikey=${process.env.FMP_API_KEY}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`FMP ratios request failed for ${ticker}: ${res.status} ${await res.text()}`);
+  }
+  return firstResult(await res.json());
+}
+
 async function run() {
   const tickers = await getTrackedTickers();
   if (!tickers.length) {
@@ -59,12 +70,16 @@ async function run() {
     return;
   }
 
-  console.log(`Refreshing ${tickers.length} tickers (2 API calls each)...`);
+  console.log(`Refreshing ${tickers.length} tickers (3 API calls each)...`);
   let callsUsed = 0;
 
   for (const ticker of tickers) {
-    const [quote, profile] = await Promise.all([fetchQuote(ticker), fetchProfile(ticker)]);
-    callsUsed += 2;
+    const [quote, profile, ratios] = await Promise.all([
+      fetchQuote(ticker),
+      fetchProfile(ticker),
+      fetchRatios(ticker),
+    ]);
+    callsUsed += 3;
 
     if (!quote || !quote.price) {
       console.warn(`No quote data for ${ticker} — skipping`);
@@ -80,7 +95,7 @@ async function run() {
         ticker,
         quote.price,
         quote.marketCap,
-        quote.pe,
+        ratios?.priceToEarningsRatioTTM ?? null,
         profile?.lastDividend && quote.price ? profile.lastDividend / quote.price : null,
         profile?.sector || null,
       ]
