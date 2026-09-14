@@ -1,4 +1,4 @@
-name: Morning price refresh
+name: Morning price refresh and digest
 
 on:
   schedule:
@@ -26,3 +26,8 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+
+      - run: npm run send-digest
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
