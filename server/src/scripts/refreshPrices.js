@@ -100,6 +100,15 @@ async function run() {
         profile?.sector || null,
       ]
     );
+
+    // Log today's price into our own running history table — FMP's actual
+    // historical-data endpoints all require a paid plan, so instead of
+    // buying history we build it ourselves, one row per ticker per day.
+    await pool.query(
+      `INSERT INTO price_history (ticker, date, price) VALUES ($1, CURRENT_DATE, $2)
+       ON CONFLICT (ticker, date) DO UPDATE SET price = $2`,
+      [ticker, quote.price]
+    );
   }
 
   console.log(`Done. Used ${callsUsed} of 250 daily FMP calls.`);
