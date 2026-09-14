@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
   const withValues = await Promise.all(
     portfolios.map(async (p) => {
       const { rows: holdings } = await pool.query(
-        `SELECT h.ticker, h.shares, h.cost_basis, tp.price, tp.updated_at
+           `SELECT h.id, h.ticker, h.shares, h.cost_basis, tp.price, tp.updated_at
          FROM holdings h
          LEFT JOIN ticker_prices tp ON tp.ticker = h.ticker
          WHERE h.portfolio_id = $1`,
