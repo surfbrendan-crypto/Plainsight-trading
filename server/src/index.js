@@ -44,4 +44,4 @@ app.use((err, req, res, next) => {
 });
 
 const port = process.env.PORT || 4000;
-app.listen(port, () => console.log(`Plainsight Trading API listening on :${port}`));
+app.listen(port, () => console.log(`Clearview Portfolio API listening on :${port}`));
