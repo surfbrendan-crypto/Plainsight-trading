@@ -2,10 +2,18 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 
+// Without this, an unhandled error in any single request (e.g. a database
+// hiccup) crashes the entire Node process instead of just failing that one
+// request. This keeps the server alive and logs the error instead.
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection (server stayed up):', err);
+});
+
 const authRoutes = require('./routes/auth');
 const portfolioRoutes = require('./routes/portfolios');
 const screenerRoutes = require('./routes/screener');
 const stripeRoutes = require('./routes/stripe');
+const tickerRoutes = require('./routes/tickers');
 
 const app = express();
 
@@ -26,6 +34,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/portfolios', portfolioRoutes);
 app.use('/api/screener', screenerRoutes);
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/tickers', tickerRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
