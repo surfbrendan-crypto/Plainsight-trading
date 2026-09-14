@@ -1,13 +1,14 @@
 {
-  "name": "plainsight-trading-server",
+  "name": "clearview-portfolio-server",
   "version": "0.1.0",
-  "description": "Backend API for Plainsight Trading — portfolio dashboard and stock screener",
+  "description": "Backend API for Clearview Portfolio — portfolio dashboard and stock screener",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "refresh-prices": "node src/scripts/refreshPrices.js",
-    "load-symbols": "node src/scripts/loadSymbols.js"
+    "load-symbols": "node src/scripts/loadSymbols.js",
+    "send-digest": "node src/scripts/sendDigest.js"
   },
   "dependencies": {
     "express": "^4.19.2",
