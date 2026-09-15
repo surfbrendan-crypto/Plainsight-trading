@@ -15,6 +15,7 @@ const screenerRoutes = require('./routes/screener');
 const stripeRoutes = require('./routes/stripe');
 const tickerRoutes = require('./routes/tickers');
 const demoRoutes = require('./routes/demo');
+const userRoutes = require('./routes/users');
 
 const app = express();
 
@@ -37,6 +38,7 @@ app.use('/api/screener', screenerRoutes);
 app.use('/api/stripe', stripeRoutes);
 app.use('/api/tickers', tickerRoutes);
 app.use('/api/demo', demoRoutes);
+app.use('/api/users', userRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
