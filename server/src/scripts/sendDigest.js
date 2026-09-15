@@ -9,6 +9,36 @@ const FROM = 'Clearview Portfolio <morning@clearviewportfolio.com>';
 
 const money = (n) => `$${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 
+// Generates a short, honest summary of the *pattern* of today's move —
+// which holding drove it, how concentrated vs. broad-based it was — purely
+// from the real numbers we have. No AI call, no external cost: this is
+// template text with real data plugged in, not a guess at causes we can't
+// actually know (we deliberately never claim *why* a stock moved, since we
+// have no news data to back that up).
+function describeMove(holdingChanges, totalChange, totalYesterday) {
+  const meaningful = holdingChanges.filter((h) => Math.abs(h.change) > 0.005);
+  if (!meaningful.length) {
+    return 'Prices were essentially flat across your holdings today.';
+  }
+
+  const totalAbsChange = meaningful.reduce((sum, h) => sum + Math.abs(h.change), 0);
+  const dominant = meaningful.reduce((max, h) => (Math.abs(h.change) > Math.abs(max.change) ? h : max));
+  const dominantShare = totalAbsChange > 0 ? Math.abs(dominant.change) / totalAbsChange : 0;
+
+  const pctOfPortfolio = totalYesterday > 0 ? (Math.abs(totalChange) / totalYesterday) * 100 : 0;
+  let magnitude;
+  if (pctOfPortfolio < 0.3) magnitude = 'a quiet day';
+  else if (pctOfPortfolio < 1) magnitude = 'a fairly typical day of movement';
+  else magnitude = 'a more active day than usual';
+
+  const dSign = dominant.change >= 0 ? '+' : '-';
+
+  if (meaningful.length === 1 || dominantShare > 0.6) {
+    return `It was ${magnitude}, driven mostly by ${dominant.ticker} (${dSign}${money(dominant.change)}), rather than a broad move across everything you hold.`;
+  }
+  return `It was ${magnitude}, with the change spread across several holdings rather than concentrated in just one.`;
+}
+
 async function run() {
   // Every user with an active (or trialing) subscription — Basic and Pro
   // both get the digest; it's the core differentiator, not a Pro-only perk.
@@ -33,6 +63,7 @@ async function run() {
       let totalToday = 0;
       let totalYesterday = 0;
       const summaries = [];
+      const holdingChanges = []; // flat, across all portfolios — for the "what moved" summary
 
       for (const p of portfolios) {
         const { rows: holdings } = await pool.query(
@@ -53,8 +84,12 @@ async function run() {
           // Fall back to today's price if we don't have a second day of
           // history yet (brand-new ticker) — treats it as flat, not a loss.
           const yesterdayPrice = Number(history[1]?.price ?? todayPrice);
-          pToday += todayPrice * Number(h.shares);
-          pYesterday += yesterdayPrice * Number(h.shares);
+          const holdingValueToday = todayPrice * Number(h.shares);
+          const holdingValueYesterday = yesterdayPrice * Number(h.shares);
+
+          pToday += holdingValueToday;
+          pYesterday += holdingValueYesterday;
+          holdingChanges.push({ ticker: h.ticker, change: holdingValueToday - holdingValueYesterday });
         }
 
         totalToday += pToday;
@@ -67,6 +102,7 @@ async function run() {
       const totalChange = totalToday - totalYesterday;
       const sign = totalChange >= 0 ? '+' : '-';
       const color = totalChange >= 0 ? '#38CE9B' : '#EA6A5A';
+      const explanation = describeMove(holdingChanges, totalChange, totalYesterday);
 
       const rowsHtml = summaries
         .map((p) => {
@@ -93,6 +129,10 @@ async function run() {
               <p style="color:#AEB4D1; font-size:13px; margin:0;">Total value</p>
               <p style="color:#F3F0E6; font-size:30px; font-weight:600; margin:4px 0;">${money(totalToday)}</p>
               <p style="color:${color}; font-family:monospace; font-size:15px; margin:0;">${sign}${money(totalChange)} since yesterday</p>
+            </div>
+            <div style="background:#212B52; border-radius:6px; padding:16px 18px; margin-top:20px;">
+              <p style="color:#EAB454; font-family:monospace; font-size:11px; letter-spacing:1.5px; margin:0 0 8px;">WHAT MOVED</p>
+              <p style="color:#F3F0E6; font-size:14.5px; line-height:1.5; margin:0;">${explanation}</p>
             </div>
             <p style="color:#6B7280; font-size:12px; margin-top:28px; line-height:1.5;">
               You're getting this because you have an active Clearview Portfolio subscription.
