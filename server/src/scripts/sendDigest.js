@@ -18,7 +18,7 @@ const money = (n) => `$${Math.abs(n).toLocaleString(undefined, { maximumFraction
 function describeMove(holdingChanges, totalChange, totalYesterday) {
   const meaningful = holdingChanges.filter((h) => Math.abs(h.change) > 0.005);
   if (!meaningful.length) {
-    return 'Prices were essentially flat across your holdings today.';
+    return { text: 'Prices were essentially flat across your holdings today.', dominantTicker: null };
   }
 
   const totalAbsChange = meaningful.reduce((sum, h) => sum + Math.abs(h.change), 0);
@@ -32,11 +32,39 @@ function describeMove(holdingChanges, totalChange, totalYesterday) {
   else magnitude = 'a more active day than usual';
 
   const dSign = dominant.change >= 0 ? '+' : '-';
+  const isConcentrated = meaningful.length === 1 || dominantShare > 0.6;
 
-  if (meaningful.length === 1 || dominantShare > 0.6) {
-    return `It was ${magnitude}, driven mostly by ${dominant.ticker} (${dSign}${money(dominant.change)}), rather than a broad move across everything you hold.`;
+  const text = isConcentrated
+    ? `It was ${magnitude}, driven mostly by ${dominant.ticker} (${dSign}${money(dominant.change)}), rather than a broad move across everything you hold.`
+    : `It was ${magnitude}, with the change spread across several holdings rather than concentrated in just one.`;
+
+  return { text, dominantTicker: isConcentrated ? dominant.ticker : null };
+}
+
+// Looks up a recent real headline for a ticker, so "why" is answered with an
+// actual sourced article rather than a guessed-at cause. Cached per run so
+// many subscribers sharing the same top mover only cost one API call total.
+// Fails silently — if this endpoint isn't available on the current FMP plan,
+// the digest still sends fine without a headline.
+async function fetchHeadline(ticker, cache) {
+  if (cache.has(ticker)) return cache.get(ticker);
+
+  try {
+    const url = `https://financialmodelingprep.com/stable/news/stock-latest?symbols=${ticker}&limit=1&apikey=${process.env.FMP_API_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) {
+      cache.set(ticker, null);
+      return null;
+    }
+    const data = await res.json();
+    const article = Array.isArray(data) ? data[0] : null;
+    const headline = article?.title ? { title: article.title, url: article.url, site: article.site } : null;
+    cache.set(ticker, headline);
+    return headline;
+  } catch (err) {
+    cache.set(ticker, null);
+    return null;
   }
-  return `It was ${magnitude}, with the change spread across several holdings rather than concentrated in just one.`;
 }
 
 async function run() {
@@ -51,6 +79,7 @@ async function run() {
 
   console.log(`Sending morning digest to up to ${users.length} subscribers...`);
   let sent = 0;
+  const newsCache = new Map(); // shared across all users this run
 
   for (const user of users) {
     try {
@@ -107,6 +136,9 @@ async function run() {
       const sign = totalChange >= 0 ? '+' : '-';
       const color = totalChange >= 0 ? '#38CE9B' : '#EA6A5A';
       const explanation = describeMove(holdingChanges, totalChange, totalYesterday);
+      const headline = explanation.dominantTicker
+        ? await fetchHeadline(explanation.dominantTicker, newsCache)
+        : null;
 
       // One flat table: a bold portfolio-total row, followed by an indented,
       // smaller row for each individual holding in that portfolio.
@@ -154,7 +186,16 @@ async function run() {
             </div>
             <div style="background:#212B52; border-radius:6px; padding:16px 18px; margin-top:20px;">
               <p style="color:#EAB454; font-family:monospace; font-size:11px; letter-spacing:1.5px; margin:0 0 8px;">WHAT MOVED</p>
-              <p style="color:#F3F0E6; font-size:14.5px; line-height:1.5; margin:0;">${explanation}</p>
+              <p style="color:#F3F0E6; font-size:14.5px; line-height:1.5; margin:0;">${explanation.text}</p>
+              ${
+                headline
+                  ? `<p style="color:#AEB4D1; font-size:13px; line-height:1.5; margin:12px 0 0; border-top:1px solid #303A64; padding-top:12px;">
+                       Recent headline on ${explanation.dominantTicker}:
+                       ${headline.url ? `<a href="${headline.url}" style="color:#EAB454;">${headline.title}</a>` : headline.title}
+                       ${headline.site ? `<span style="color:#6B7280;"> — ${headline.site}</span>` : ''}
+                     </p>`
+                  : ''
+              }
             </div>
             <p style="color:#6B7280; font-size:12px; margin-top:28px; line-height:1.5;">
               You're getting this because you have an active Clearview Portfolio subscription.
