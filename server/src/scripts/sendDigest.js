@@ -74,6 +74,7 @@ async function run() {
 
         let pToday = 0;
         let pYesterday = 0;
+        const holdingRows = [];
 
         for (const h of holdings) {
           const { rows: history } = await pool.query(
@@ -84,17 +85,20 @@ async function run() {
           // Fall back to today's price if we don't have a second day of
           // history yet (brand-new ticker) — treats it as flat, not a loss.
           const yesterdayPrice = Number(history[1]?.price ?? todayPrice);
-          const holdingValueToday = todayPrice * Number(h.shares);
-          const holdingValueYesterday = yesterdayPrice * Number(h.shares);
+          const valueToday = todayPrice * Number(h.shares);
+          const valueYesterday = yesterdayPrice * Number(h.shares);
+          const change = valueToday - valueYesterday;
+          const pctChange = valueYesterday > 0 ? (change / valueYesterday) * 100 : null;
 
-          pToday += holdingValueToday;
-          pYesterday += holdingValueYesterday;
-          holdingChanges.push({ ticker: h.ticker, change: holdingValueToday - holdingValueYesterday });
+          holdingRows.push({ ticker: h.ticker, value: valueToday, change, pctChange });
+          holdingChanges.push({ ticker: h.ticker, change });
+          pToday += valueToday;
+          pYesterday += valueYesterday;
         }
 
         totalToday += pToday;
         totalYesterday += pYesterday;
-        summaries.push({ name: p.name, value: pToday, change: pToday - pYesterday });
+        summaries.push({ name: p.name, value: pToday, change: pToday - pYesterday, holdingRows });
       }
 
       if (!summaries.length) continue;
@@ -104,15 +108,33 @@ async function run() {
       const color = totalChange >= 0 ? '#38CE9B' : '#EA6A5A';
       const explanation = describeMove(holdingChanges, totalChange, totalYesterday);
 
+      // One flat table: a bold portfolio-total row, followed by an indented,
+      // smaller row for each individual holding in that portfolio.
       const rowsHtml = summaries
         .map((p) => {
           const pSign = p.change >= 0 ? '+' : '-';
           const pColor = p.change >= 0 ? '#38CE9B' : '#EA6A5A';
-          return `<tr>
-            <td style="padding:8px 0; color:#F3F0E6; font-family:sans-serif; font-size:15px;">${p.name}</td>
-            <td style="padding:8px 0; text-align:right; color:#F3F0E6; font-family:sans-serif; font-size:15px;">${money(p.value)}</td>
-            <td style="padding:8px 0; text-align:right; color:${pColor}; font-family:monospace; font-size:14px;">${pSign}${money(p.change)}</td>
+
+          const portfolioRow = `<tr>
+            <td style="padding:10px 0 4px; border-top:1px solid #303A64; color:#F3F0E6; font-family:sans-serif; font-weight:600; font-size:15px;">${p.name}</td>
+            <td style="padding:10px 0 4px; border-top:1px solid #303A64; text-align:right; color:#F3F0E6; font-family:sans-serif; font-weight:600; font-size:15px;">${money(p.value)}</td>
+            <td style="padding:10px 0 4px; border-top:1px solid #303A64; text-align:right; color:${pColor}; font-family:monospace; font-size:14px;">${pSign}${money(p.change)}</td>
           </tr>`;
+
+          const holdingRowsHtml = p.holdingRows
+            .map((h) => {
+              const hSign = h.change >= 0 ? '+' : '-';
+              const hColor = h.change >= 0 ? '#38CE9B' : '#EA6A5A';
+              const pctText = h.pctChange === null ? '' : ` (${hSign}${Math.abs(h.pctChange).toFixed(1)}%)`;
+              return `<tr>
+                <td style="padding:4px 0 4px 16px; color:#AEB4D1; font-family:sans-serif; font-size:13px;">${h.ticker}</td>
+                <td style="padding:4px 0; text-align:right; color:#AEB4D1; font-family:sans-serif; font-size:13px;">${money(h.value)}</td>
+                <td style="padding:4px 0; text-align:right; color:${hColor}; font-family:monospace; font-size:12.5px;">${hSign}${money(h.change)}${pctText}</td>
+              </tr>`;
+            })
+            .join('');
+
+          return portfolioRow + holdingRowsHtml;
         })
         .join('');
 
@@ -121,8 +143,8 @@ async function run() {
           <div style="max-width:480px; margin:0 auto; background:#1A2140; border-radius:8px; padding:32px;">
             <p style="color:#EAB454; font-family:monospace; font-size:12px; letter-spacing:2px; margin:0 0 8px;">MORNING BRIEFING</p>
             <h1 style="color:#F3F0E6; font-size:26px; margin:0 0 20px;">Good morning</h1>
-            <p style="color:#AEB4D1; font-size:15px; margin:0 0 8px;">Here's where things stand across your portfolios:</p>
-            <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+            <p style="color:#AEB4D1; font-size:15px; margin:0 0 4px;">Here's where things stand across your portfolios:</p>
+            <table style="width:100%; border-collapse:collapse; margin:12px 0;">
               ${rowsHtml}
             </table>
             <div style="border-top:1px solid #303A64; padding-top:16px; margin-top:8px;">
