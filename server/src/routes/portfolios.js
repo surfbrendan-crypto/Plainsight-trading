@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
   const withValues = await Promise.all(
     portfolios.map(async (p) => {
       const { rows: holdings } = await pool.query(
-           `SELECT h.id, h.ticker, h.shares, h.cost_basis, tp.price, tp.updated_at
+        `SELECT h.id, h.ticker, h.shares, h.cost_basis, h.locked_until, tp.price, tp.updated_at
          FROM holdings h
          LEFT JOIN ticker_prices tp ON tp.ticker = h.ticker
          WHERE h.portfolio_id = $1`,
@@ -111,12 +111,66 @@ router.post('/:id/holdings', async (req, res) => {
 });
 
 router.delete('/:portfolioId/holdings/:holdingId', async (req, res) => {
+  const { rows } = await pool.query(
+    `SELECT h.locked_until FROM holdings h
+     JOIN portfolios p ON h.portfolio_id = p.id
+     WHERE h.id = $1 AND p.id = $2 AND p.user_id = $3`,
+    [req.params.holdingId, req.params.portfolioId, req.userId]
+  );
+  if (!rows.length) {
+    return res.status(404).json({ error: 'Holding not found' });
+  }
+  if (rows[0].locked_until && new Date(rows[0].locked_until) > new Date()) {
+    return res.status(403).json({
+      error: `This holding is locked until ${rows[0].locked_until}. Unlock it first if you want to remove it.`,
+    });
+  }
+
   await pool.query(
     `DELETE FROM holdings h USING portfolios p
      WHERE h.id = $1 AND h.portfolio_id = p.id
        AND p.id = $2 AND p.user_id = $3`,
     [req.params.holdingId, req.params.portfolioId, req.userId]
   );
+  res.status(204).end();
+});
+
+// Sets a self-imposed hold period on a holding — while locked, the
+// dashboard hides its price and blocks removing it, as a speed bump against
+// impulse decisions. Only 30 or 90 day periods, kept simple on purpose.
+router.post('/:portfolioId/holdings/:holdingId/lock', async (req, res) => {
+  const { days } = req.body;
+  if (![30, 90].includes(Number(days))) {
+    return res.status(400).json({ error: 'days must be 30 or 90' });
+  }
+
+  const { rows } = await pool.query(
+    `UPDATE holdings h SET locked_until = CURRENT_DATE + $1::int
+     FROM portfolios p
+     WHERE h.id = $2 AND h.portfolio_id = p.id AND p.id = $3 AND p.user_id = $4
+     RETURNING h.locked_until`,
+    [days, req.params.holdingId, req.params.portfolioId, req.userId]
+  );
+  if (!rows.length) {
+    return res.status(404).json({ error: 'Holding not found' });
+  }
+  res.json({ lockedUntil: rows[0].locked_until });
+});
+
+// Explicit early unlock — always allowed (this is a self-help tool, not a
+// trap), but the frontend asks for confirmation before calling this so it's
+// a deliberate choice rather than an accidental click.
+router.post('/:portfolioId/holdings/:holdingId/unlock', async (req, res) => {
+  const { rows } = await pool.query(
+    `UPDATE holdings h SET locked_until = NULL
+     FROM portfolios p
+     WHERE h.id = $1 AND h.portfolio_id = p.id AND p.id = $2 AND p.user_id = $3
+     RETURNING h.id`,
+    [req.params.holdingId, req.params.portfolioId, req.userId]
+  );
+  if (!rows.length) {
+    return res.status(404).json({ error: 'Holding not found' });
+  }
   res.status(204).end();
 });
 
