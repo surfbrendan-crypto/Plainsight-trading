@@ -38,7 +38,7 @@ function describeMove(holdingChanges, totalChange, totalYesterday) {
     ? `It was ${magnitude}, driven mostly by ${dominant.ticker} (${dSign}${money(dominant.change)}), rather than a broad move across everything you hold.`
     : `It was ${magnitude}, with the change spread across several holdings rather than concentrated in just one.`;
 
-  return { text, dominantTicker: isConcentrated ? dominant.ticker : null };
+  return { text, dominantTicker: isConcentrated ? dominant.ticker : null, dominantThesis: isConcentrated ? dominant.thesis : null };
 }
 
 // Looks up a recent real headline for a ticker, so "why" is answered with an
@@ -96,7 +96,7 @@ async function run() {
 
       for (const p of portfolios) {
         const { rows: holdings } = await pool.query(
-          `SELECT ticker, shares FROM holdings WHERE portfolio_id = $1`,
+          `SELECT ticker, shares, thesis FROM holdings WHERE portfolio_id = $1`,
           [p.id]
         );
         if (!holdings.length) continue;
@@ -120,7 +120,7 @@ async function run() {
           const pctChange = valueYesterday > 0 ? (change / valueYesterday) * 100 : null;
 
           holdingRows.push({ ticker: h.ticker, value: valueToday, change, pctChange });
-          holdingChanges.push({ ticker: h.ticker, change });
+          holdingChanges.push({ ticker: h.ticker, change, thesis: h.thesis });
           pToday += valueToday;
           pYesterday += valueYesterday;
         }
@@ -193,6 +193,13 @@ async function run() {
                        Recent headline on ${explanation.dominantTicker}:
                        ${headline.url ? `<a href="${headline.url}" style="color:#EAB454;">${headline.title}</a>` : headline.title}
                        ${headline.site ? `<span style="color:#6B7280;"> — ${headline.site}</span>` : ''}
+                     </p>`
+                  : ''
+              }
+              ${
+                explanation.dominantThesis
+                  ? `<p style="color:#AEB4D1; font-size:13px; line-height:1.5; margin:12px 0 0; border-top:1px solid #303A64; padding-top:12px;">
+                       You noted when you bought ${explanation.dominantTicker}: <em>"${explanation.dominantThesis}"</em>
                      </p>`
                   : ''
               }
