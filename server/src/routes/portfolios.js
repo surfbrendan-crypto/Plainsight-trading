@@ -18,7 +18,7 @@ router.get('/', async (req, res) => {
   const withValues = await Promise.all(
     portfolios.map(async (p) => {
       const { rows: holdings } = await pool.query(
-        `SELECT h.id, h.ticker, h.shares, h.cost_basis, h.locked_until, tp.price, tp.updated_at
+        `SELECT h.id, h.ticker, h.shares, h.cost_basis, h.locked_until, h.thesis, tp.price, tp.updated_at
          FROM holdings h
          LEFT JOIN ticker_prices tp ON tp.ticker = h.ticker
          WHERE h.portfolio_id = $1`,
@@ -80,7 +80,7 @@ router.delete('/:id', async (req, res) => {
 // Add a holding to a portfolio. Ticker is upserted into ticker_prices with
 // a null price — it'll be picked up by tomorrow morning's refresh job.
 router.post('/:id/holdings', async (req, res) => {
-  const { ticker, shares, costBasis } = req.body;
+  const { ticker, shares, costBasis, thesis } = req.body;
   if (!ticker || !shares) {
     return res.status(400).json({ error: 'ticker and shares are required' });
   }
@@ -102,12 +102,29 @@ router.post('/:id/holdings', async (req, res) => {
   );
 
   const { rows } = await pool.query(
-    `INSERT INTO holdings (portfolio_id, ticker, shares, cost_basis)
-     VALUES ($1, $2, $3, $4) RETURNING *`,
-    [req.params.id, normalizedTicker, shares, costBasis || null]
+    `INSERT INTO holdings (portfolio_id, ticker, shares, cost_basis, thesis)
+     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+    [req.params.id, normalizedTicker, shares, costBasis || null, thesis || null]
   );
 
   res.status(201).json({ holding: rows[0] });
+});
+
+// Add or update the "why are you buying this?" note on an existing holding
+// — lets someone fill it in later if they skipped it when first adding.
+router.patch('/:portfolioId/holdings/:holdingId/thesis', async (req, res) => {
+  const { thesis } = req.body;
+  const { rows } = await pool.query(
+    `UPDATE holdings h SET thesis = $1
+     FROM portfolios p
+     WHERE h.id = $2 AND h.portfolio_id = p.id AND p.id = $3 AND p.user_id = $4
+     RETURNING h.thesis`,
+    [thesis || null, req.params.holdingId, req.params.portfolioId, req.userId]
+  );
+  if (!rows.length) {
+    return res.status(404).json({ error: 'Holding not found' });
+  }
+  res.json({ thesis: rows[0].thesis });
 });
 
 router.delete('/:portfolioId/holdings/:holdingId', async (req, res) => {
