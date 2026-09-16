@@ -26,6 +26,18 @@ router.get('/', async (req, res) => {
         [p.id]
       );
 
+      // Attach yesterday's price to each holding so the frontend can show a
+      // gentler "are you sure?" when someone tries to remove a holding that's
+      // down today, instead of the same flat confirmation every time.
+      for (const h of holdings) {
+        const { rows: history } = await pool.query(
+          `SELECT price FROM price_history WHERE ticker = $1 ORDER BY date DESC LIMIT 2`,
+          [h.ticker]
+        );
+        const yesterdayPrice = Number(history[1]?.price ?? h.price ?? 0);
+        h.dayChangePct = yesterdayPrice > 0 && h.price ? ((Number(h.price) - yesterdayPrice) / yesterdayPrice) * 100 : null;
+      }
+
       const currentValue = holdings.reduce(
         (sum, h) => sum + Number(h.shares) * Number(h.price || 0),
         0
