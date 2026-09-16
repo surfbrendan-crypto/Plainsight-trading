@@ -8,10 +8,11 @@ router.use(requireAuth);
 const BASIC_PORTFOLIO_LIMIT = 3;
 
 // List all portfolios for the logged-in user, each with current value
-// computed from the morning-refreshed price cache.
+// computed from the morning-refreshed price cache, plus a "what if you'd
+// done nothing" comparison against the very first holding ever added.
 router.get('/', async (req, res) => {
   const { rows: portfolios } = await pool.query(
-    'SELECT id, name, created_at FROM portfolios WHERE user_id = $1 ORDER BY created_at',
+    'SELECT id, name, baseline_ticker, baseline_shares, created_at FROM portfolios WHERE user_id = $1 ORDER BY created_at',
     [req.userId]
   );
 
@@ -34,12 +35,22 @@ router.get('/', async (req, res) => {
         0
       );
 
+      let doNothingValue = null;
+      if (p.baseline_ticker) {
+        const { rows: baselinePrice } = await pool.query(
+          'SELECT price FROM ticker_prices WHERE ticker = $1',
+          [p.baseline_ticker]
+        );
+        doNothingValue = Number(baselinePrice[0]?.price || 0) * Number(p.baseline_shares);
+      }
+
       return {
         ...p,
         holdings,
         currentValue,
         gainLoss: currentValue - costValue,
         pricesAsOf: holdings[0]?.updated_at || null,
+        doNothingValue,
       };
     })
   );
@@ -105,6 +116,15 @@ router.post('/:id/holdings', async (req, res) => {
     `INSERT INTO holdings (portfolio_id, ticker, shares, cost_basis, thesis)
      VALUES ($1, $2, $3, $4, $5) RETURNING *`,
     [req.params.id, normalizedTicker, shares, costBasis || null, thesis || null]
+  );
+
+  // If this is the very first holding this portfolio has ever had, freeze it
+  // as the "what if you'd done nothing" baseline — permanent, even if this
+  // holding is later removed.
+  await pool.query(
+    `UPDATE portfolios SET baseline_ticker = $1, baseline_shares = $2, baseline_set_at = now()
+     WHERE id = $3 AND baseline_ticker IS NULL`,
+    [normalizedTicker, shares, req.params.id]
   );
 
   res.status(201).json({ holding: rows[0] });
